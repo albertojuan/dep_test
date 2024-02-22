@@ -2,11 +2,10 @@ TOKEN "pipe read token" READ
 
 NODE active_markets_0
 SQL >
-
     %
-                SELECT distinct market FROM merchant_daily_surface_clicks
-                WHERE merchant = {{ String(merchant, 'stronger') }}
-                AND date >= {{ Date(from_date, "2023-11-15") }}
-                AND date <= {{ Date(to_date, "2024-01-15") }}
-
-
+    SELECT distinct market
+    FROM merchant_daily_surface_clicks
+    WHERE
+        merchant = {{ String(merchant, 'stronger') }}
+        AND date >= {{ Date(from_date, "2023-11-15") }}
+        AND date <= {{ Date(to_date, "2024-01-15") }}

@@ -2,29 +2,23 @@ TOKEN "pipe read token" READ
 
 NODE product_clicks_on_specific_plp_pipe_0
 SQL >
-
     %
-                select collection_id, main_product_id, uniqMerge(unique_clicks) as clicks
-                from product_clicks_on_specific_plp_mv as p
-                JOIN (
-                    SELECT product_id, argMaxMerge(main_product_id) as main_product_id
-                    FROM product_id_mapping_latest
-                    WHERE merchant = {{ String(merchant, 'stronger') }}
-                    GROUP BY product_id
-                ) as mapping
-                ON mapping.product_id = p.product_id
-                WHERE
-                    merchant = {{ String(merchant, 'stronger') }}
-                    AND day >= {{ Date(from_date, "2023-11-15") }}
-                    AND day <= {{ Date(to_date, "2024-01-15") }}
-                    {% if defined(market) %}
-                        AND market = {{ String(market, 'se-sv_SE') }}
-                    {% end %}
-                    {% if defined(collection_ids) %}
-                        AND
-                            collection_id
-                            IN {{ Array(collection_ids, 'String', default='101,102,110') }}
-                    {% end %}
-                GROUP BY collection_id, main_product_id
-
-
+    select collection_id, main_product_id, uniqMerge(unique_clicks) as clicks
+    from product_clicks_on_specific_plp_mv as p
+    JOIN
+        (
+            SELECT product_id, argMaxMerge(main_product_id) as main_product_id
+            FROM product_id_mapping_latest
+            WHERE merchant = {{ String(merchant, 'stronger') }}
+            GROUP BY product_id
+        ) as mapping
+        ON mapping.product_id = p.product_id
+    WHERE
+        merchant = {{ String(merchant, 'stronger') }}
+        AND day >= {{ Date(from_date, "2023-11-15") }}
+        AND day <= {{ Date(to_date, "2024-01-15") }}
+        {% if defined(market) %} AND market = {{ String(market, 'se-sv_SE') }} {% end %}
+        {% if defined(collection_ids) %}
+            AND collection_id IN {{ Array(collection_ids, 'String', default='101,102,110') }}
+        {% end %}
+    GROUP BY collection_id, main_product_id

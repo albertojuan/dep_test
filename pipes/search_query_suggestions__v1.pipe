@@ -1,0 +1,26 @@
+DESCRIPTION >
+    Find queries suitable as suggestions, IE popular queries of decent length with a fair amount of results.
+
+TOKEN "pipe read token" READ
+
+NODE popular_queries_with_results
+SQL >
+    %
+    SELECT
+        query,
+        countMerge(search_count) as n_searches,
+        argMax(result_count, search_date) AS last_result_count
+    FROM search_queries_per_day
+    WHERE
+        search_date >= {{ Date(from_date, "2023-09-01") }}
+        AND merchant = {{ String(merchant, 'equestrian') }}
+        AND locale = {{ String(locale, "en") }}
+        AND search_language = {{ String(search_language, "en") }}
+        AND Length(query) >= {{ Int32(min_query_length, 4) }}
+        AND match(query, '[a-zA-Z]+')
+    GROUP BY query
+    HAVING
+        n_searches >= {{ Int32(min_query_searches, 10) }}
+        AND last_result_count >= {{ Int32(min_result_count, 5) }}
+    ORDER BY n_searches DESC, query
+    LIMIT {{ Int32(max_suggestions, 50) }}

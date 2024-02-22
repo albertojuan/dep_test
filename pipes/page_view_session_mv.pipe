@@ -1,24 +1,18 @@
 DESCRIPTION >
-	Number of unique devices that viewed product pages each day
-
+    Number of unique devices that viewed product pages each day
 
 NODE unique_sessions
 DESCRIPTION >
     Number of unique devices that viewed a product each day
 
 SQL >
-
     SELECT
         date(timestamp) AS viewed_date,
         PV.merchant as merchant,
         uniqState(PV.device_id) AS session_count
-    FROM product_page_view AS PV
+    FROM product_page_view__v1 AS PV
     WHERE Length(PV.product_id) > 0
-    GROUP BY
-        viewed_date,
-        merchant
+    GROUP BY viewed_date, merchant
 
-TYPE materialized
+TYPE MATERIALIZED
 DATASOURCE product_page_view_session_daily
-
-

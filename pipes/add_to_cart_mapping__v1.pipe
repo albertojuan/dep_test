@@ -1,0 +1,27 @@
+DESCRIPTION >
+    Show latest add to cart events for a merchant and if they could be mapped to an ingested product
+
+TOKEN "pipe read token" READ
+
+NODE add_to_cart_mapped
+SQL >
+    %
+    SELECT
+        timestamp,
+        market,
+        device_id,
+        PA.product_id AS event_product_id,
+        CASE
+            WHEN length(PM.product_id) >= 1
+            THEN PM.product_id
+            ELSE NULL END AS catalog_product_id
+            FROM add_to_cart__v1 AS PA
+            LEFT OUTER JOIN
+                product_id_mapping_latest AS PM
+                ON PA.product_id = PM.product_id
+                AND PA.merchant = PM.merchant
+            WHERE
+                merchant == {{ String(merchant, 'equestrian') }}
+                AND timestamp >= {{ DateTime(from_datetime, "2023-09-10 12:00:00") }}
+            ORDER BY timestamp DESC
+            LIMIT {{ Int32(max_events, 20) }}

@@ -1,0 +1,34 @@
+DESCRIPTION >
+    Sales quantities per transaction product id for a given merchant and date range.
+
+TOKEN "pipe read token" READ
+
+NODE purchases_deduplicated_first
+DESCRIPTION >
+    Purchase events could be sent multiple times (page reloads etc). Only use the first copy within the timespan. Caveat that there could be other copies previous to the timespan.
+
+SQL >
+    %
+    SELECT
+        market,
+        transaction_id,
+        argMin(transaction_product_ids, timestamp) AS transaction_product_ids,
+        argMin(prices, timestamp) as prices
+    FROM purchase__v1
+    WHERE
+        merchant = {{ String(merchant, "equestrian") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2023-08-01") }}
+        AND Date(timestamp) <= {{ Date(to_date, "2023-09-30") }}
+    GROUP BY market, transaction_id
+
+NODE product_purchase_quantities
+DESCRIPTION >
+    Count the number of orders each transaction product id appeared in, by market.
+
+SQL >
+    SELECT market, transaction_product_id, COUNT(DISTINCT transaction_id) as purchases
+    FROM purchases_deduplicated_first ARRAY
+    JOIN transaction_product_ids as transaction_product_id, prices as price
+    where price > 0
+    GROUP BY market, transaction_product_id
+    ORDER BY transaction_product_id

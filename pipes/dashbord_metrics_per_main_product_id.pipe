@@ -1,199 +1,183 @@
 DESCRIPTION >
-	Pipe to fetch metrics for portal per main product id, metrics included:
-- purchases
-- revenue
-- clicks
-- str
-- stock level
-
+    Pipe to fetch metrics for portal per main product id, metrics included:
+    - purchases
+    - revenue
+    - clicks
+    - str
+    - stock level
 
 TOKEN "pipe read token" READ
 
 NODE purchases_deduplicated_first
 SQL >
-
     %
-                                SELECT
-                                    merchant,
-                                    transaction_id,
-                                    argMin(transaction_product_ids, timestamp) AS transaction_product_ids,
-                                    argMin(prices, timestamp) as prices,
-                                    argMin(quantities, timestamp) as quantities,
-                                    date(timestamp) as date,
-                                    currency,
-                                    market
-                                FROM purchase
-                                WHERE merchant = {{ String(merchant, "chimi") }}
-                                AND Date(timestamp) >= {{ Date(from_date, "2024-01-09") }}
-                                AND Date(timestamp) <= {{ Date(to_date, "2024-01-16") }}
-                                GROUP BY merchant, transaction_id, timestamp, currency, market
-                                ORDER BY timestamp
-
-
+    SELECT
+        merchant,
+        transaction_id,
+        argMin(transaction_product_ids, timestamp) AS transaction_product_ids,
+        argMin(prices, timestamp) as prices,
+        argMin(quantities, timestamp) as quantities,
+        date(timestamp) as date,
+        currency,
+        market
+    FROM purchase__v1
+    WHERE
+        merchant = {{ String(merchant, "chimi") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2024-01-09") }}
+        AND Date(timestamp) <= {{ Date(to_date, "2024-01-16") }}
+    GROUP BY merchant, transaction_id, timestamp, currency, market
+    ORDER BY timestamp
 
 NODE product_purchase_quantities
 SQL >
-
     SELECT
-        merchant, market, currency, date, transaction_product_id, sum(quantity) as purchases, sum(quantity*price) as revenue
+        merchant,
+        market,
+        currency,
+        date,
+        transaction_product_id,
+        sum(quantity) as purchases,
+        sum(quantity * price) as revenue
     FROM purchases_deduplicated_first ARRAY
     JOIN transaction_product_ids as transaction_product_id, quantities as quantity, prices as price
     WHERE price > 0
     GROUP BY merchant, market, currency, date, transaction_product_id
 
-
-
 NODE purchases_counts_per_market
 SQL >
-
     %
-                            WITH transaction_id_mapping as (
-                                    SELECT
-                                        merchant,
-                                        transaction_product_id,
-                                        argMaxMerge(main_product_id) as main_product_id
-                                    FROM transaction_id_mapping_latest_mv
-                                    WHERE merchant = {{ String(merchant, "chimi") }}
-                                    GROUP BY merchant, transaction_product_id
-                            )
-                            SELECT merchant, market, currency, main_product_id, sum(purchases) as purchases, sum(revenue) as revenue
-                            FROM product_purchase_quantities
-                            INNER JOIN (
-                              SELECT
-                                 merchant,
-                                 transaction_product_id,
-                                 main_product_id
-                              FROM transaction_id_mapping
-                              WHERE transaction_product_id IN (SELECT transaction_product_id FROM product_purchase_quantities)
-                            ) AS t using(merchant, transaction_product_id)
-                            GROUP BY merchant, market, currency, main_product_id
-
-
+    WITH
+        transaction_id_mapping as (
+            SELECT merchant, transaction_product_id, argMaxMerge(main_product_id) as main_product_id
+            FROM transaction_id_mapping_latest_mv
+            WHERE merchant = {{ String(merchant, "chimi") }}
+            GROUP BY merchant, transaction_product_id
+        )
+    SELECT
+        merchant,
+        market,
+        currency,
+        main_product_id,
+        sum(purchases) as purchases,
+        sum(revenue) as revenue
+    FROM product_purchase_quantities
+    INNER JOIN
+        (
+            SELECT merchant, transaction_product_id, main_product_id
+            FROM transaction_id_mapping
+            WHERE
+                transaction_product_id
+                IN (SELECT transaction_product_id FROM product_purchase_quantities)
+        ) AS t using (merchant, transaction_product_id)
+    GROUP BY merchant, market, currency, main_product_id
 
 NODE inventory_level
 SQL >
-
     %
-                WITH
-                    invetory_per_main_product_id as (
-                        SELECT
-                            merchant,
-                            main_product_id,
-                            timestamp,
-                            sum(quantity) as quantity
-                        FROM inventory_attributes
-                        where merchant = {{ String(merchant, "chimi") }}
-                        and inventory_id = {{ String(inventory_id, "SE_2") }}
-                        and date(timestamp) = {{ Date(to_date, "2024-01-18") }}
-                        GROUP BY merchant, main_product_id, timestamp
-                    )
-                SELECT
-                    merchant,
-                    main_product_id,
-                    date(timestamp) as date,
-                    argMax(quantity, timestamp) as quantity
-                FROM invetory_per_main_product_id
-                GROUP BY merchant, main_product_id, date
-
-
+    WITH
+        invetory_per_main_product_id as (
+            SELECT merchant, main_product_id, timestamp, sum(quantity) as quantity
+            FROM inventory_attributes__v3
+            where
+                merchant = {{ String(merchant, "chimi") }}
+                and inventory_id = {{ String(inventory_id, "SE_2") }}
+                and date(timestamp) = {{ Date(to_date, "2024-01-18") }}
+            GROUP BY merchant, main_product_id, timestamp
+        )
+    SELECT merchant, main_product_id, date(timestamp) as date, argMax(quantity, timestamp) as quantity
+    FROM invetory_per_main_product_id
+    GROUP BY merchant, main_product_id, date
 
 NODE sell_through_rate
 SQL >
-
     %
-                with
-                    total_purchases_counts as (
-                        select merchant, main_product_id, sum(purchases) as total_purchases
-                        from purchases_counts_per_market
-                        group by merchant, main_product_id
-                    )
-                SELECT
-                    merchant,
-                    main_product_id,
-                    quantity as stock_level,
-                    case
-                        when total_purchases == 0 and quantity == 0
-                        then null
-                        else
-                            cast(divide(total_purchases, (total_purchases + quantity)) as float)
-                    end as str,
-                    case
-                        when quantity < 10
-                        then null
-                        else
-                            cast(divide(total_purchases, (total_purchases + quantity)) as float)
-                    end as sortable_str
-                FROM inventory_level
-                LEFT JOIN total_purchases_counts using (merchant, main_product_id)
-
-
+    with
+        total_purchases_counts as (
+            select merchant, main_product_id, sum(purchases) as total_purchases
+            from purchases_counts_per_market
+            group by merchant, main_product_id
+        )
+    SELECT
+        merchant,
+        main_product_id,
+        quantity as stock_level,
+        case
+            when total_purchases == 0 and quantity == 0
+            then null
+            else cast(divide(total_purchases, (total_purchases + quantity)) as float)
+        end as str,
+        case
+            when quantity < 10
+            then null
+            else cast(divide(total_purchases, (total_purchases + quantity)) as float)
+        end as sortable_str
+    FROM inventory_level
+    LEFT JOIN total_purchases_counts using (merchant, main_product_id)
 
 NODE clicks_per_main_product
 SQL >
-
     %
-                WITH product_id_mapping as (
-                        SELECT
-                            product_id,
-                            argMaxMerge(main_product_id) as main_product_id
-                        FROM product_id_mapping_latest_mv
-                        WHERE merchant = {{ String(merchant, "chimi") }}
-                        GROUP BY product_id
-                ),
-                clicks_per_product_id as (
-                  SELECT product_id, uniqMerge(clicks) as clicks
-                  FROM product_clicks_per_request_daily_mv
-                  WHERE merchant = {{ String(merchant, "chimi") }}
-                  AND date >= {{ Date(from_date, "2024-01-09") }}
-                  AND date <= {{ Date(to_date, "2024-01-16") }}
-                  {% if defined(market) %} AND market = {{ String(market, "se") }} {% end %}
-                  GROUP BY product_id
-                )
-                SELECT 
-                 main_product_id, sum(clicks) as clicks
-                FROM clicks_per_product_id
-                INNER JOIN product_id_mapping using(product_id)
-                GROUP BY  main_product_id
-
-
+    WITH
+        product_id_mapping as (
+            SELECT product_id, argMaxMerge(main_product_id) as main_product_id
+            FROM product_id_mapping_latest_mv
+            WHERE merchant = {{ String(merchant, "chimi") }}
+            GROUP BY product_id
+        ),
+        clicks_per_product_id as (
+            SELECT product_id, uniqMerge(clicks) as clicks
+            FROM product_clicks_per_request_daily_mv
+            WHERE
+                merchant = {{ String(merchant, "chimi") }}
+                AND date >= {{ Date(from_date, "2024-01-09") }}
+                AND date <= {{ Date(to_date, "2024-01-16") }}
+                {% if defined(market) %} AND market = {{ String(market, "se") }} {% end %}
+            GROUP BY product_id
+        )
+    SELECT main_product_id, sum(clicks) as clicks
+    FROM clicks_per_product_id
+    INNER JOIN product_id_mapping using (product_id)
+    GROUP BY main_product_id
 
 NODE metrics_per_main_product_id
 SQL >
-
     %
-                WITH
-                    purchases_per_currency_in_market as (
-                        SELECT main_product_id, currency, sum(purchases) as purchases, sum(revenue) as revenue
-                        FROM purchases_counts_per_market
-                        {% if defined(market) %} WHERE market = {{ String(market, "se") }} {% end %}
-                        group by main_product_id, currency
-                    ),
-                purchases_in_market as (
-                  SELECT main_product_id, groupArray(currency) as currency, groupArray(purchases) as purchases, groupArray(revenue) as revenue
-                  FROM purchases_per_currency_in_market
-                  group by main_product_id
-                )
-                SELECT
-                    c.main_product_id as main_product_id,
-                    currency,
-                    clicks,
-                    revenue,
-                    arraySum(purchases) as purchases,
-                    stock_level,
-                    str
-                FROM clicks_per_main_product as c
-                LEFT JOIN purchases_in_market as p on c.main_product_id = p.main_product_id
-                LEFT JOIN sell_through_rate as s on c.main_product_id = s.main_product_id
-                {% if String(order_by, "str") == 'purchases' %}
-                    ORDER BY purchases
-                {% end %}
-                {% if String(order_by, "str") == 'clicks' %}
-                   ORDER BY clicks
-                 {% end %}
-                {% if String(order_by, "str") != 'str' and Boolean(descending, False) %} desc {% end %}
-                {% if String(order_by, "str") == 'str' and Boolean(descending, False) %} ORDER BY sortable_str desc, purchases desc, c.main_product_id {% end %}
-                {% if String(order_by, "str") == 'str' and not Boolean(descending, False)  %} ORDER BY sortable_str asc, stock_level desc, purchases asc, c.main_product_id {% end %}
-                LIMIT {{ Int32(lim, 100) }}
-                OFFSET {{ Int32(offset, 0) }}
-
-
+    WITH
+        purchases_per_currency_in_market as (
+            SELECT main_product_id, currency, sum(purchases) as purchases, sum(revenue) as revenue
+            FROM purchases_counts_per_market
+            {% if defined(market) %} WHERE market = {{ String(market, "se") }} {% end %}
+            group by main_product_id, currency
+        ),
+        purchases_in_market as (
+            SELECT
+                main_product_id,
+                groupArray(currency) as currency,
+                groupArray(purchases) as purchases,
+                groupArray(revenue) as revenue
+            FROM purchases_per_currency_in_market
+            group by main_product_id
+        )
+    SELECT
+        c.main_product_id as main_product_id,
+        currency,
+        clicks,
+        revenue,
+        arraySum(purchases) as purchases,
+        stock_level,
+        str
+    FROM clicks_per_main_product as c
+    LEFT JOIN purchases_in_market as p on c.main_product_id = p.main_product_id
+    LEFT JOIN sell_through_rate as s on c.main_product_id = s.main_product_id
+    {% if String(order_by, "str") == 'purchases' %} ORDER BY purchases {% end %}
+    {% if String(order_by, "str") == 'clicks' %}
+        ORDER BY clicks
+    {% end %} {% if String(order_by, "str") != 'str' and Boolean(descending, False) %} desc {% end %}
+    {% if String(order_by, "str") == 'str' and Boolean(descending, False) %}
+        ORDER BY sortable_str desc, purchases desc, c.main_product_id
+    {% end %}
+    {% if String(order_by, "str") == 'str' and not Boolean(descending, False) %}
+        ORDER BY sortable_str asc, stock_level desc, purchases asc, c.main_product_id
+    {% end %}
+    LIMIT {{ Int32(lim, 100) }}
+    OFFSET {{ Int32(offset, 0) }}

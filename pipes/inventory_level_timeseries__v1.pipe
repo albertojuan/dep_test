@@ -1,0 +1,21 @@
+TOKEN "pipe read token" READ
+
+NODE inventory_level_timeseries_0
+SQL >
+    %
+    WITH
+        inventory_per_main_product_id as (
+            SELECT merchant, main_product_id, timestamp, sum(quantity) as q
+            FROM inventory_attributes__v3
+            WHERE
+                merchant = {{ String(merchant, "chimi") }}
+                AND Date(timestamp) >= {{ Date(from_date, "2024-01-01") }}
+                AND Date(timestamp) <= {{ Date(to_date, "2024-01-16") }}
+                AND inventory_id = {{ String(inventory_id, "SE_2") }}
+                AND main_product_id in {{ Array(main_product_ids, 'String', default='3273,3184') }}
+            GROUP BY merchant, main_product_id, timestamp
+        )
+    SELECT merchant, main_product_id, date(timestamp) as date, argMax(q, timestamp) as quantity
+    FROM inventory_per_main_product_id
+    GROUP BY merchant, main_product_id, date
+    ORDER BY date asc

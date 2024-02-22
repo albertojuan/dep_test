@@ -1,10 +1,9 @@
-
 SCHEMA >
     `viewed_date` Date,
     `merchant` String,
     `product_id` String,
     `views` AggregateFunction(uniq, String)
 
-ENGINE "AggregatingMergeTree"
-ENGINE_PARTITION_KEY "toYYYYMM(viewed_date)"
-ENGINE_SORTING_KEY "merchant, viewed_date, product_id"
+ENGINE AggregatingMergeTree
+ENGINE_PARTITION_KEY toYYYYMM(viewed_date)
+ENGINE_SORTING_KEY merchant, viewed_date, product_id

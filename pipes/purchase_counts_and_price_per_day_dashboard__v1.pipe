@@ -1,0 +1,44 @@
+DESCRIPTION >
+    Sales data for a product, by day, for a given merchant and market.
+    The data is deduplicated by transaction_id, and only the first copy of the transaction is used within the timespan.
+
+TOKEN "pipe read token" READ
+
+NODE purchases_deduplicated_first
+DESCRIPTION >
+    Purchase events could be sent multiple times (page reloads etc). Only use the first copy within the timespan. Caveat that there could be other copies previous to the timespan.
+
+SQL >
+    %
+    SELECT
+        merchant,
+        transaction_id,
+        argMin(transaction_product_ids, timestamp) AS transaction_product_ids,
+        argMin(prices, timestamp) as prices,
+        date(timestamp) as date,
+        currency,
+        market
+    FROM purchase__v1
+    WHERE
+        merchant = {{ String(merchant, "equestrian") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2023-08-01") }}
+        AND Date(timestamp) <= {{ Date(to_date, "2023-09-30") }}
+        {% if defined(market) %} AND market = {{ String(market, "se") }} {% end %}
+    GROUP BY merchant, transaction_id, timestamp, currency, market
+    ORDER BY timestamp
+
+NODE product_purchases
+SQL >
+    SELECT
+        merchant,
+        transaction_product_id,
+        price,
+        COUNT(DISTINCT transaction_id) as purchases,
+        date,
+        currency,
+        market
+    FROM purchases_deduplicated_first ARRAY
+    JOIN transaction_product_ids as transaction_product_id, prices as price
+    where price > 0
+    GROUP BY merchant, transaction_product_id, date, currency, price, market
+    ORDER BY date, transaction_product_id

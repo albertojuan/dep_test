@@ -1,0 +1,43 @@
+DESCRIPTION >
+    Number of transactions that include product A and B together. A can be equal to B, meaning the total number of orders that included that product at all.
+
+TOKEN "pipe read token" READ
+
+NODE transactions_deduplicated
+DESCRIPTION >
+    Filter out duplicate transactions
+
+SQL >
+    %
+    SELECT transaction_id, argMin(transaction_product_ids, timestamp) AS transaction_product_ids
+    FROM purchase__v1
+    WHERE
+        merchant = {{ String(merchant, "equestrian") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2023-08-01") }}
+        AND Date(timestamp) <= {{ Date(to_date, "2023-09-30") }}
+    GROUP BY transaction_id
+
+NODE transaction_products
+DESCRIPTION >
+    Flatten out product id arrays
+
+SQL >
+    SELECT transaction_id, arrayJoin(transaction_product_ids) AS transaction_product_id
+    FROM transactions_deduplicated
+    GROUP BY transaction_id, transaction_product_id
+
+NODE transaction_associations
+SQL >
+    %
+    SELECT
+        t1.transaction_product_id AS antecedent_transaction_product_id,
+        t2.transaction_product_id as consequent_transaction_product_id,
+        COUNT(*) AS association_count,
+        (SELECT COUNT(*) FROM transactions_deduplicated) as total_sessions
+    FROM transaction_products AS t1
+    INNER JOIN transaction_products AS t2 ON t1.transaction_id = t2.transaction_id
+    GROUP BY t1.transaction_product_id, t2.transaction_product_id
+    HAVING
+        t1.transaction_product_id >= t2.transaction_product_id
+        AND association_count >= {{ Int32(min_association_count, 1) }}
+    ORDER BY antecedent_transaction_product_id, consequent_transaction_product_id

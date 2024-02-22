@@ -6,6 +6,6 @@ SCHEMA >
     `merchant` String,
     `session_count` AggregateFunction(uniq, String)
 
-ENGINE "AggregatingMergeTree"
-ENGINE_PARTITION_KEY "toYYYYMM(viewed_date)"
-ENGINE_SORTING_KEY "viewed_date, merchant"
+ENGINE AggregatingMergeTree
+ENGINE_PARTITION_KEY toYYYYMM(viewed_date)
+ENGINE_SORTING_KEY viewed_date, merchant

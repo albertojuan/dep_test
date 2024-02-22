@@ -1,0 +1,119 @@
+DESCRIPTION >
+    Sell through rate is calculated as str = (sold items in time period) / (sold items in time period + quantity still in inventory)
+
+TOKEN "pipe read token" READ
+
+NODE purchases_deduplicated_first
+SQL >
+    %
+    SELECT
+        merchant,
+        transaction_id,
+        argMin(transaction_product_ids, timestamp) AS transaction_product_ids,
+        argMin(prices, timestamp) as prices,
+        argMin(quantities, timestamp) as quantities,
+        date(timestamp) as date,
+        currency,
+        market
+    FROM purchase__v1
+    WHERE
+        merchant = {{ String(merchant, "chimi") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2024-01-09") }}
+        AND Date(timestamp) <= {{ Date(to_date, "2024-01-16") }}
+    GROUP BY merchant, transaction_id, timestamp, currency, market
+    ORDER BY timestamp
+
+NODE product_purchase_quantities
+SQL >
+    SELECT
+        merchant,
+        market,
+        currency,
+        date,
+        transaction_product_id,
+        sum(quantity) as purchases,
+        sum(quantity * price) as revenue
+    FROM purchases_deduplicated_first ARRAY
+    JOIN transaction_product_ids as transaction_product_id, quantities as quantity, prices as price
+    WHERE price > 0
+    GROUP BY merchant, market, currency, date, transaction_product_id
+
+NODE purchases_counts_per_market
+SQL >
+    %
+    WITH
+        transaction_id_mapping as (
+            SELECT merchant, transaction_product_id, argMaxMerge(main_product_id) as main_product_id
+            FROM transaction_id_mapping_latest_mv
+            WHERE merchant = {{ String(merchant, "chimi") }}
+            GROUP BY merchant, transaction_product_id
+        )
+    SELECT
+        merchant,
+        market,
+        currency,
+        main_product_id,
+        sum(purchases) as purchases,
+        sum(revenue) as revenue
+    FROM product_purchase_quantities
+    INNER JOIN
+        (
+            SELECT merchant, transaction_product_id, main_product_id
+            FROM transaction_id_mapping
+            WHERE
+                transaction_product_id
+                IN (SELECT transaction_product_id FROM product_purchase_quantities)
+        ) AS t using (merchant, transaction_product_id)
+    GROUP BY merchant, market, currency, main_product_id
+
+NODE inventory_level
+SQL >
+    %
+    WITH
+        invetory_per_main_product_id as (
+            SELECT merchant, main_product_id, timestamp, sum(quantity) as quantity
+            FROM
+                (
+                    SELECT merchant, main_product_id, timestamp, quantity
+                    FROM inventory_attributes__v3
+                    where
+                        merchant = {{ String(merchant, "chimi") }}
+                        and inventory_id = {{ String(inventory_id, "SE_2") }}
+                        and date(timestamp) = {{ Date(to_date, "2024-01-18") }}
+                        and quantity >= 10
+                )
+            GROUP BY merchant, main_product_id, timestamp
+        )
+    SELECT merchant, main_product_id, date(timestamp) as date, argMax(quantity, timestamp) as quantity
+    FROM invetory_per_main_product_id
+    GROUP BY merchant, main_product_id, date
+
+NODE sell_through_rate
+SQL >
+    %
+    with
+        purchases as (
+            select main_product_id, sum(purchases) as total_purchases
+            from purchases_counts_per_market
+            group by main_product_id
+        ),
+        strs as (
+            SELECT
+                main_product_id,
+                quantity as stock_level,
+                case
+                    when total_purchases == 0 and quantity == 0
+                    then null
+                    else cast(divide(total_purchases, (total_purchases + quantity)) as float)
+                end as str,
+                case
+                    when quantity < 10
+                    then null
+                    else cast(divide(total_purchases, (total_purchases + quantity)) as float)
+                end as sortable_str
+            FROM inventory_level
+            LEFT JOIN purchases using (main_product_id)
+            ORDER BY sortable_str asc, stock_level desc, total_purchases asc, main_product_id
+        )
+    select main_product_id, stock_level, str
+    from strs

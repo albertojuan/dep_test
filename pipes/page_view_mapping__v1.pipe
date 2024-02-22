@@ -1,0 +1,27 @@
+DESCRIPTION >
+    Lists the latest page view events for a merchant and if the product ID matches ingestion
+
+TOKEN "pipe read token" READ
+
+NODE page_views_mapped
+SQL >
+    %
+    SELECT
+        timestamp,
+        market,
+        device_id,
+        PV.product_id AS event_product_id,
+        CASE
+            WHEN length(PM.product_id) >= 1
+            THEN PM.product_id
+            ELSE NULL END AS catalog_product_id
+            FROM product_page_view__v1 AS PV
+            LEFT OUTER JOIN
+                product_id_mapping_latest AS PM
+                ON PV.product_id = PM.product_id
+                AND PV.merchant = PM.merchant
+            WHERE
+                merchant == {{ String(merchant, 'equestrian') }}
+                AND timestamp >= {{ DateTime(from_datetime, "2023-09-10 12:00:00") }}
+            ORDER BY timestamp DESC
+            LIMIT {{ Int32(max_events, 20) }}
