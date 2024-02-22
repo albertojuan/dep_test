@@ -7,8 +7,8 @@ NODE add_to_cart_mapped
 SQL >
     %
     SELECT
-        timestamp,
         market,
+        timestamp,
         device_id,
         PA.product_id AS event_product_id,
         CASE
@@ -22,6 +22,6 @@ SQL >
                 AND PA.merchant = PM.merchant
             WHERE
                 merchant == {{ String(merchant, 'equestrian') }}
-                AND timestamp >= {{ DateTime(from_datetime, "2023-09-10 12:00:00") }}
+                AND timestamp >= {{ DateTime(from_datetime, "2023-09-10 13:00:00") }}
             ORDER BY timestamp DESC
-            LIMIT {{ Int32(max_events, 20) }}
+            LIMIT {{ Int32(max_events, 40) }}
