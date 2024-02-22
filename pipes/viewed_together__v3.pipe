@@ -1,0 +1,50 @@
+DESCRIPTION >
+    Number of sessions (same device and day) that viewed product A and B together. A can be equal to B, meaning the total number of unique sessions that viewed that product at all.
+
+TOKEN "pipe read token" READ
+
+NODE unique_session_views
+DESCRIPTION >
+    Total number of page view sessions within the time range
+
+SQL >
+    %
+    SELECT uniqMerge(session_count) as total_sessions
+    FROM product_page_view_session_daily
+    WHERE
+        merchant = {{ String(merchant, "equestrian") }}
+        AND viewed_date >= toStartOfMonth(Date({{ Date(from_date, "2023-10-02") }}))
+        AND viewed_date <= {{ Date(to_date, "2023-11-24") }}
+
+NODE valid_product_ids
+DESCRIPTION >
+    Number of sessions that viewed both antecedent and consequent products
+
+SQL >
+    %
+    SELECT distinct (product_id) as product_id
+    FROM product_id_mapping_latest AS PM
+    WHERE PM.merchant = {{ String(merchant, "equestrian") }}
+
+NODE page_view_associations
+DESCRIPTION >
+    Number of sessions that viewed both antecedent and consequent products
+
+SQL >
+    %
+    SELECT
+        PA.antecedent_product_id AS antecedent_product_id,
+        PA.consequent_product_id AS consequent_product_id,
+        countMerge(PA.association_count) AS association_count,
+        (SELECT total_sessions FROM unique_session_views) as total_sessions
+    FROM product_page_view_assoc_monthly AS PA
+    -- Filter out invalid product IDs to reduce result size
+    INNER JOIN valid_product_ids AS VA ON VA.product_id = PA.antecedent_product_id
+    INNER JOIN valid_product_ids AS VS ON VS.product_id = PA.consequent_product_id
+    WHERE
+        PA.merchant = {{ String(merchant, "equestrian") }}
+        AND viewed_month >= toStartOfMonth(Date({{ Date(from_date, "2023-10-02") }}))
+        AND viewed_month <= {{ Date(to_date, "2023-11-24") }}
+    GROUP BY PA.antecedent_product_id, PA.consequent_product_id
+    HAVING association_count >= {{ Int32(min_association_count, 1) }}
+    ORDER BY antecedent_product_id, consequent_product_id

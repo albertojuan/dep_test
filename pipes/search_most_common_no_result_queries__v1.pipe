@@ -1,0 +1,19 @@
+TOKEN "pipe read token" READ
+
+NODE most_common_no_results
+DESCRIPTION >
+    Queries where the max result count for the last day of the range was 0
+
+SQL >
+    %
+    SELECT query, market, locale, countMerge(search_count) as count
+    FROM search_queries_per_day
+    WHERE  -- Ugh, need a real test merchant
+        query <> 'randomstringwithnoresultsfordepicttest'
+        AND Length(query) >= {{ Int32(min_query_length, 3) }}
+        AND merchant = {{ String(merchant, 'equestrian') }}
+        AND search_date >= {{ Date(from_date, "2023-09-01") }}
+        AND search_date <= {{ Date(to_date, "2023-09-15") }}
+    GROUP BY market, locale, query
+    HAVING argMax(result_count, search_date) = 0
+    ORDER BY count DESC, market, locale, query

@@ -1,0 +1,19 @@
+DESCRIPTION >
+    Product page view quantities per product id for a given merchant and date range.
+
+TOKEN "pipe read token" READ
+
+NODE product_page_view_quantities
+DESCRIPTION >
+    Products can be viewed multiple time per device and day, only count once per "session".
+
+SQL >
+    %
+    SELECT product_id, uniqMerge(views) as views
+    FROM product_page_view_count_daily
+    WHERE
+        merchant = {{ String(merchant, "equestrian") }}
+        AND viewed_date >= {{ Date(from_date, "2023-08-01") }}
+        AND viewed_date <= {{ Date(to_date, "2023-09-30") }}
+    GROUP BY product_id
+    ORDER BY product_id

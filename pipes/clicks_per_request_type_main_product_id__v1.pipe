@@ -1,0 +1,23 @@
+TOKEN "pipe read token" READ
+
+NODE clicks_per_main_product_idand_request_type_0
+SQL >
+    %
+    SELECT main_product_id, request_type, request_query, uniqMerge(clicks) as clicks
+    FROM product_clicks_per_request_daily_mv
+    INNER JOIN
+        (
+            SELECT product_id, argMaxMerge(main_product_id) as main_product_id
+            FROM product_id_mapping_latest_mv
+            WHERE merchant = {{ String(merchant, "chimi") }}
+            GROUP BY product_id
+        ) using (product_id)
+    WHERE
+        merchant = {{ String(merchant, "chimi") }}
+        AND request_query != ''
+        AND main_product_id in {{ Array(main_product_ids, 'String', default='3273,3184') }}
+        AND date >= {{ Date(from_date, "2024-01-09") }}
+        AND date <= {{ Date(to_date, "2024-01-16") }}
+        {% if defined(market) %} AND market = {{ String(market, "se") }} {% end %}
+    GROUP BY main_product_id, request_type, request_query
+    ORDER BY main_product_id, request_type, clicks desc

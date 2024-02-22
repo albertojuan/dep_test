@@ -1,0 +1,55 @@
+DESCRIPTION >
+    Pipes to count how many views different PLPs have had. You can get all PLPs, or the top n PLPs, or a specific set of PLPs.
+
+TOKEN "pipe read token" READ
+
+NODE plp_popularity__unique_daily_views_raw
+DESCRIPTION >
+    "unique daily views" means that if one user views a PLP several times, that counts as one view. We distinguish users based on their device id.
+
+SQL >
+    %
+    SELECT collection_id, date as day, uniqMerge(unique_views) as unique_views
+    from merchant_plp_daily_views
+    WHERE
+        merchant = {{ String(merchant, 'stronger') }}
+        AND day >= {{ Date(from_date, "2023-12-15") }}
+        AND day <= {{ Date(to_date, "2024-01-15") }}
+        {% if defined(collection_id) %}
+            AND collection_id IN {{ Array(collection_ids, 'String', default='101,102,110') }}
+        {% end %}
+        {% if defined(market) %} AND market = {{ String(market, 'se-sv_SE') }} {% end %}
+    GROUP BY collection_id, day
+    ORDER BY unique_views DESC
+
+NODE plp_popularity__total_unique_views_ranked
+DESCRIPTION >
+    Rank the collections by the total unique views over the entire period.
+
+SQL >
+    SELECT
+        collection_id,
+        sum(unique_views) as total_unique_views,
+        row_number() OVER (order by total_unique_views desc, collection_id ASC) as rank
+    FROM plp_popularity__unique_daily_views_raw
+    GROUP BY collection_id
+
+NODE plp_popularity__top_n_plp_query_ids
+DESCRIPTION >
+    The PLPs that have the top n most unique total views over the time period.
+
+SQL >
+    %
+    SELECT collection_id
+    FROM plp_popularity__total_unique_views_ranked
+    WHERE rank < {{ Int32(top_n, 10) }}
+
+NODE plp_popularity__daily_views
+SQL >
+    %
+    SELECT collection_id, day, unique_views as daily_views
+    FROM plp_popularity__unique_daily_views_raw
+    {% if defined(top_n) %}
+        WHERE collection_id IN (select collection_id from plp_popularity__top_n_plp_query_ids)
+    {% end %}
+    ORDER BY day ASC, daily_views DESC, collection_id ASC

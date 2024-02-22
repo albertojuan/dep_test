@@ -3,19 +3,9 @@ DESCRIPTION >
     Number of unique devices that viewed a particular product, per day.
 
 SQL >
+    SELECT toDate(timestamp) AS viewed_date, merchant, product_id, uniqState(device_id) AS views
+    FROM product_page_view__v1
+    GROUP BY viewed_date, merchant, product_id
 
-    SELECT
-        toDate(timestamp) AS viewed_date,
-        merchant,
-        product_id,
-        uniqState(device_id) AS views
-    FROM product_page_view
-    GROUP BY
-        viewed_date,
-        merchant,
-        product_id
-
-TYPE materialized
+TYPE MATERIALIZED
 DATASOURCE product_page_view_count_daily
-
-

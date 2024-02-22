@@ -1,0 +1,13 @@
+TOKEN "data append token" APPEND
+
+SCHEMA >
+    `inventory_id` String `json:$.inventory_id`,
+    `merchant` String `json:$.merchant`,
+    `product_id` String `json:$.product_id`,
+    `main_product_id` String `json:$.main_product_id`,
+    `quantity` Int16 `json:$.quantity`,
+    `timestamp` DateTime64(3) `json:$.timestamp`
+
+ENGINE MergeTree
+ENGINE_PARTITION_KEY toYear(timestamp)
+ENGINE_SORTING_KEY merchant, inventory_id, timestamp, product_id

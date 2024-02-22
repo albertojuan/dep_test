@@ -1,0 +1,146 @@
+DESCRIPTION >
+    Get top selling products' number of clicks per day, per request type (product_listing, search or recommend), per request query (listing ID, search query, recommendation type, respectively). Limited.&nbsp;
+
+TOKEN "pipe read token" READ
+
+NODE purchases_deduplicated_first
+DESCRIPTION >
+    Purchase events could be sent multiple times (page reloads etc). Only use the first copy within the timespan. Caveat that there could be other copies previous to the timespan.
+
+SQL >
+    %
+    SELECT
+        merchant,
+        transaction_id,
+        argMin(transaction_product_ids, timestamp) AS transaction_product_ids,
+        argMin(prices, timestamp) as prices,
+        argMin(quantities, timestamp) as quantities,
+        date(timestamp) as date,
+        currency,
+        market
+    FROM purchase__v1
+    WHERE
+        merchant = {{ String(merchant, "stronger") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2023-08-01") }}
+        AND Date(timestamp) <= {{ Date(to_date, "2023-09-30") }}
+        {% if defined(market) %} AND market = {{ String(market, "se") }} {% end %}
+    GROUP BY merchant, transaction_id, timestamp, currency, market
+    ORDER BY timestamp
+
+NODE product_purchase_quantities
+SQL >
+    SELECT merchant, transaction_product_id, COUNT(DISTINCT transaction_id) as purchases
+    FROM purchases_deduplicated_first ARRAY
+    JOIN transaction_product_ids as transaction_product_id, prices as price
+    where price > 0
+    GROUP BY merchant, transaction_product_id
+    ORDER BY purchases desc
+
+NODE purchase_count
+SQL >
+    %
+    SELECT main_product_id, sum(purchases) as total_purchases
+    FROM product_purchase_quantities
+    INNER JOIN
+        (
+            SELECT transaction_product_id, argMaxMerge(main_product_id) as main_product_id
+            FROM transaction_id_mapping_latest_mv
+            WHERE merchant = {{ String(merchant, "stronger") }}
+            GROUP BY transaction_product_id
+        ) as mapping
+        ON mapping.transaction_product_id = product_purchase_quantities.transaction_product_id
+    GROUP BY main_product_id
+    ORDER BY total_purchases desc
+    LIMIT {{ Int32(lim, 2) }}
+
+NODE latest_product_id_mapping
+DESCRIPTION >
+    Get the latest ID mapping for a given merchant and product id.
+
+SQL >
+    %
+    SELECT
+        product_id,
+        argMaxMerge(transaction_product_id) as transaction_product_id,
+        argMaxMerge(item_group_id) as item_group_id,
+        argMaxMerge(main_product_id) as main_product_id,
+        coalesce(item_group_id, main_product_id) as group_id,
+        merchant
+    FROM product_id_mapping_latest as pm
+    WHERE merchant = {{ String(merchant, "stronger") }}
+    GROUP BY product_id, merchant
+
+NODE top_selling_products_latest_product_id_mapping
+DESCRIPTION >
+    Only get the ID mapping for top selling products
+
+SQL >
+    select product_id, main_product_id, merchant
+    from purchase_count as TP
+    join latest_product_id_mapping as PM on PM.main_product_id = TP.main_product_id
+
+NODE filtered_clicks_with_main_product_id_mapping
+DESCRIPTION >
+    Product clicks with request type and query, along with main product ID
+
+SQL >
+    %
+    SELECT
+        date,
+        merchant,
+        main_product_id,
+        market,
+        request_type,
+        request_query,
+        uniqMerge(PC.clicks) as count_distinct_request_id
+    FROM product_clicks_per_request_daily as PC
+    INNER JOIN
+        top_selling_products_latest_product_id_mapping as PM
+        on PM.product_id = PC.product_id
+        AND PM.merchant = PC.merchant
+    WHERE
+        merchant = {{ String(merchant, "stronger") }}
+        AND date >= {{ Date(from_date, "2023-08-01") }}
+        AND date < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))
+        {% if defined(market) %} AND market = {{ String(market, "se") }} {% end %}
+    GROUP BY date, merchant, PM.main_product_id, market, request_type, request_query
+
+NODE clicks_per_day_per_request_type_and_request_query
+DESCRIPTION >
+    Group by day, and count
+
+SQL >
+    SELECT
+        date,
+        merchant,
+        main_product_id,
+        request_type,
+        request_query,
+        sum(count_distinct_request_id) as total_count
+    FROM filtered_clicks_with_main_product_id_mapping
+    GROUP BY date, merchant, main_product_id, request_type, request_query
+    ORDER BY date ASC, merchant, request_type, request_query
+
+NODE clicks_per_day_per_request_type_aggregated_request_query
+SQL >
+    %
+    SELECT
+        date,
+        merchant,
+        main_product_id,
+        request_type,
+        groupArray((request_query, prev.total_count)) as request_query_clicks
+    FROM clicks_per_day_per_request_type_and_request_query as prev
+    GROUP BY date, merchant, request_type, main_product_id
+    ORDER BY date ASC, merchant, request_type
+
+NODE top_selling_products_clicks_per_day_per_request_type_node
+SQL >
+    %
+    SELECT date, main_product_id, request_type, request_query_clicks
+    FROM clicks_per_day_per_request_type_aggregated_request_query as cpd
+    JOIN
+        (select * from purchase_count LIMIT {{ Int32(lim, 2) }}) as TP
+        on TP.main_product_id = cpd.main_product_id
+    GROUP BY date, merchant, cpd.main_product_id, request_type, request_query_clicks, total_purchases
+    ORDER BY total_purchases DESC, main_product_id ASC, date ASC, merchant, request_type

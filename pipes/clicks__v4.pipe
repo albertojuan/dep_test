@@ -1,0 +1,17 @@
+DESCRIPTION >
+    Measures clicks on Depict surfaces
+
+TOKEN "pipe read token" READ
+
+NODE clicks_attribution
+SQL >
+    %
+    SELECT market, request_type, date, uniqMerge(clicks) as clicks
+    FROM merchant_daily_surface_clicks
+    WHERE
+        merchant = {{ String(merchant, "lexington") }}
+        AND date >= {{ Date(from_date, "2023-08-01") }}
+        AND date < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))  -- Inclusive
+    GROUP BY market, request_type, date
+    ORDER BY date ASC
+    WITH FILL STEP toIntervalDay(1), market, request_type

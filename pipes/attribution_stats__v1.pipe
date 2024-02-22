@@ -1,0 +1,53 @@
+DESCRIPTION >
+    Calculate various attribution pipeline stats for diagnostic purposes
+
+TOKEN "pipe read token" READ
+
+NODE click_device_ids
+SQL >
+    %
+    SELECT DISTINCT device_id
+    FROM click__v2
+    WHERE
+        timestamp > timestamp_sub(HOUR, {{ Int32(last_n_hours, 24) }}, now())
+        AND merchant = {{ String(merchant, "stronger") }}
+
+NODE add_to_cart_device_ids
+SQL >
+    %
+    SELECT DISTINCT device_id
+    FROM add_to_cart__v1
+    WHERE
+        timestamp > timestamp_sub(HOUR, {{ Int32(last_n_hours, 24) }}, now())
+        AND merchant = {{ String(merchant, "stronger") }}
+
+NODE purchase_device_ids
+SQL >
+    %
+    SELECT DISTINCT device_id
+    FROM purchase__v1
+    WHERE
+        timestamp > timestamp_sub(HOUR, {{ Int32(last_n_hours, 24) }}, now())
+        AND merchant = {{ String(merchant, "stronger") }}
+
+NODE ratio
+SQL >
+    WITH
+        purchase_device_ids_who_did_something_else AS (
+            (
+                SELECT ALL device_id
+                FROM click_device_ids
+                UNION
+                DISTINCT
+                SELECT ALL device_id
+                FROM add_to_cart_device_ids
+            )
+            INTERSECT
+            SELECT ALL device_id
+            from purchase_device_ids
+        )
+    SELECT
+        COUNT(p.device_id) / (
+            SELECT COUNT(DISTINCT device_id) FROM purchase_device_ids
+        ) as purchase_device_ids_seen_before_ratio
+    FROM purchase_device_ids_who_did_something_else p

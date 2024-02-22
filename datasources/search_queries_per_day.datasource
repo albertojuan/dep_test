@@ -11,6 +11,6 @@ SCHEMA >
     `result_count` SimpleAggregateFunction(max, UInt64),
     `search_count` AggregateFunction(count)
 
-ENGINE "AggregatingMergeTree"
-ENGINE_PARTITION_KEY "toYYYYMM(search_date)"
-ENGINE_SORTING_KEY "merchant, locale, search_language, market, query"
+ENGINE AggregatingMergeTree
+ENGINE_PARTITION_KEY toYYYYMM(search_date)
+ENGINE_SORTING_KEY merchant, locale, search_language, market, query

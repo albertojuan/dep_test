@@ -1,4 +1,3 @@
-
 SCHEMA >
     `merchant` String,
     `transaction_product_id` String,
@@ -6,5 +5,5 @@ SCHEMA >
     `main_product_id` AggregateFunction(argMax, String, DateTime64(3)),
     `product_id` AggregateFunction(argMax, String, DateTime64(3))
 
-ENGINE "AggregatingMergeTree"
-ENGINE_SORTING_KEY "merchant, transaction_product_id"
+ENGINE AggregatingMergeTree
+ENGINE_SORTING_KEY merchant, transaction_product_id

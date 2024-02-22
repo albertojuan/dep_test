@@ -1,0 +1,64 @@
+DESCRIPTION >
+    Show latest purchase events for a merchant and if they could be mapped to ingested products
+
+TOKEN "pipe read token" READ
+
+NODE product_purchases
+DESCRIPTION >
+    Split purchases by individual product IDs
+
+SQL >
+    %
+    SELECT
+        merchant,
+        timestamp,
+        market,
+        transaction_id,
+        device_id,
+        currency,
+        array_transaction_product_id as transaction_product_id,
+        any (array_quantity) as quantity,
+        any (array_price) as price
+    FROM purchase__v1 ARRAY
+    JOIN
+        prices as array_price,
+        quantities as array_quantity,
+        transaction_product_ids as array_transaction_product_id
+    WHERE
+        merchant = {{ String(merchant, "equestrian") }}
+        AND timestamp >= {{ DateTime(from_datetime, "2023-09-10 12:00:00") }}
+    GROUP BY
+        merchant, timestamp, market, transaction_id, device_id, currency, array_transaction_product_id
+    ORDER BY timestamp DESC
+    LIMIT {{ Int32(max_events, 20) }}
+
+NODE latest_transaction_id_mapping
+DESCRIPTION >
+    Get the latest ID mapping for a given merchant and transaction product id.
+
+SQL >
+    %
+    SELECT transaction_product_id, argMaxMerge(product_id) as product_id
+    FROM transaction_id_mapping_latest
+    WHERE merchant = {{ String(merchant, "equestrian") }}
+    GROUP BY transaction_product_id
+
+NODE purchases_mapped
+SQL >
+    SELECT
+        timestamp,
+        market,
+        device_id,
+        transaction_id,
+        currency,
+        quantity,
+        price,
+        PP.transaction_product_id AS event_transaction_product_id,
+        CASE
+            WHEN length(TM.product_id) >= 1
+            THEN TM.product_id
+            ELSE NULL END AS catalog_product_id
+            FROM product_purchases AS PP
+            LEFT OUTER JOIN
+                latest_transaction_id_mapping AS TM
+                ON PP.transaction_product_id = TM.transaction_product_id

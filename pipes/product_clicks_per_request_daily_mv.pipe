@@ -1,6 +1,5 @@
 NODE unique_daily_product_clicks_node
 SQL >
-
     SELECT
         merchant,
         market,
@@ -9,16 +8,8 @@ SQL >
         request_type,
         request_query,
         uniqState(request_id) AS clicks
-    FROM click
-    GROUP BY
-        merchant,
-        market,
-        date,
-        product_id,
-        request_type,
-        request_query
+    FROM click__v2
+    GROUP BY merchant, market, date, product_id, request_type, request_query
 
-TYPE materialized
+TYPE MATERIALIZED
 DATASOURCE product_clicks_per_request_daily
-
-

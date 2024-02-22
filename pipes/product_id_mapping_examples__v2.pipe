@@ -1,0 +1,27 @@
+DESCRIPTION >
+    For event diagnostics, demonstrate what proper IDs should look like for a merchant
+
+TOKEN "pipe read token" READ
+
+NODE product_id_mappings
+SQL >
+    %
+    WITH
+        FirstAndLastMappings AS (
+            SELECT product_id, argMaxMerge(transaction_product_id) as transaction_product_id
+            FROM product_id_mapping_latest
+            WHERE merchant == {{ String(merchant, 'equestrian') }}
+            GROUP BY product_id
+            ORDER BY product_id
+            LIMIT {{ Int32(max_products, 10) }} / 2
+            UNION ALL
+            SELECT product_id, argMaxMerge(transaction_product_id) as transaction_product_id
+            FROM product_id_mapping_latest
+            WHERE merchant == {{ String(merchant, 'equestrian') }}
+            GROUP BY product_id
+            ORDER BY product_id DESC
+            LIMIT {{ Int32(max_products, 10) }} / 2
+        )
+    SELECT product_id as catalog_product_id, transaction_product_id as catalog_transaction_product_id
+    FROM FirstAndLastMappings
+    ORDER BY product_id

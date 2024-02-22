@@ -1,0 +1,109 @@
+DESCRIPTION >
+    Measures purchases (and revenue) that can or can't be attributed to Depict clicks, and which request type was used to render the product card that was clicked.
+
+TOKEN "pipe read token" READ
+
+NODE latest_product_id_mapping
+DESCRIPTION >
+    Get the latest ID mapping for a given merchant and product id.
+
+SQL >
+    %
+    SELECT
+        product_id,
+        argMaxMerge(transaction_product_id) as transaction_product_id,
+        argMaxMerge(item_group_id) as item_group_id,
+        argMaxMerge(main_product_id) as main_product_id,
+        coalesce(item_group_id, main_product_id) as group_id
+    FROM product_id_mapping_latest
+    WHERE merchant = {{ String(merchant, "lexington") }}
+    GROUP BY product_id
+
+NODE latest_transaction_id_mapping
+DESCRIPTION >
+    Get the latest ID mapping for a given merchant and transaction product id.
+
+SQL >
+    %
+    SELECT
+        transaction_product_id,
+        argMaxMerge(product_id) as product_id,
+        argMaxMerge(item_group_id) as item_group_id,
+        argMaxMerge(main_product_id) as main_product_id,
+        coalesce(item_group_id, main_product_id) as group_id
+    FROM transaction_id_mapping_latest
+    WHERE merchant = {{ String(merchant, "lexington") }}
+    GROUP BY transaction_product_id
+
+NODE purchased_products
+SQL >
+    %
+    SELECT
+        market,
+        device_id,
+        currency,
+        transaction_id,
+        timestamp,
+        array_transaction_product_id as transaction_product_id,
+        any (array_quantity) as quantity,
+        any (array_price) as price,
+        any (group_id) as group_id
+    FROM purchase__v1 ARRAY
+    JOIN
+        prices as array_price,
+        quantities as array_quantity,
+        transaction_product_ids as array_transaction_product_id
+    INNER JOIN
+        latest_transaction_id_mapping AS TM ON TM.transaction_product_id = array_transaction_product_id
+    WHERE
+        merchant = {{ String(merchant, "lexington") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2023-08-28") }}
+        AND Date(timestamp) < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))  -- Inclusive
+    GROUP BY market, device_id, currency, transaction_id, timestamp, array_transaction_product_id
+
+NODE clicked_products
+SQL >
+    %
+    SELECT device_id, request_id, request_type, timestamp, any (group_id) as group_id
+    FROM click__v2
+    INNER JOIN latest_product_id_mapping USING product_id
+    WHERE
+        merchant = {{ String(merchant, "lexington") }}
+        AND Date(timestamp) >= {{ Date(from_date, "2023-08-28") }}
+        AND Date(timestamp) < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))  -- Inclusive
+    GROUP BY device_id, request_type, request_id, timestamp
+
+NODE attributed_purchases
+SQL >
+    SELECT
+        market,
+        transaction_id,
+        device_id,
+        transaction_product_id,
+        group_id,
+        currency,
+        any (purchased_products.timestamp) as timestamp,
+        any (price) as price,
+        any (quantity) as quantity,
+        argMax(request_type, clicked_products.timestamp) as request_type
+    FROM purchased_products
+    LEFT JOIN
+        clicked_products
+        ON purchased_products.group_id = clicked_products.group_id
+        AND purchased_products.device_id = clicked_products.device_id
+        -- TODO: Better attribution matching than "Occured on same date"
+        AND date(clicked_products.timestamp) = date(purchased_products.timestamp)
+    GROUP BY market, transaction_id, device_id, transaction_product_id, group_id, currency
+
+NODE purchase_revenue_by_request_type
+SQL >
+    SELECT
+        market,
+        date(timestamp) as date,
+        currency,
+        request_type,
+        sum(price * quantity) as revenue,
+        count(DISTINCT transaction_id, transaction_product_id) as purchases
+    FROM attributed_purchases
+    GROUP BY market, date, currency, request_type
+    ORDER BY market, date, currency, request_type

@@ -1,0 +1,28 @@
+DESCRIPTION >
+    Counts how many (distinct) devices clicked on any product on the given PLP.
+
+TOKEN "pipe read token" READ
+
+NODE plp_clicks_by_distinct_device_daily
+DESCRIPTION >
+    Counts how many (distinct) devices clicked on any product on the given PLP.
+    The `num_distinct_device_ids` is a proxy for the number of users who clicked on at least one product. The `num_device_ids` counts every click.
+
+SQL >
+    %
+    SELECT
+        collection_id,
+        day,
+        uniqMerge(unique_devices) as num_distinct_device_ids,
+        uniqMerge(unique_clicks) as daily_clicks
+    FROM plp_product_click_counts_daily__v2
+    WHERE
+        merchant ={{ String(merchant, 'stronger') }}
+        AND day >= {{ Date(from_date, "2023-11-15") }}
+        AND day <= {{ Date(to_date, "2023-12-15") }}
+        {% if defined(collection_ids) %}
+            AND collection_id IN {{ Array(collection_ids, 'String', default='101,102,110') }}
+        {% end %}
+        {% if defined(market) %} AND market = {{ String(market, 'se-sv_SE') }} {% end %}
+    GROUP BY merchant, collection_id, day
+    ORDER BY day ASC, num_distinct_device_ids DESC, collection_id ASC

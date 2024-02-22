@@ -1,0 +1,74 @@
+DESCRIPTION >
+    Measures add to cart events that can be attributed to Depict clicks
+
+TOKEN "pipe read token" READ
+
+NODE latest_product_id_mapping
+SQL >
+    %
+    SELECT
+        product_id,
+        argMaxMerge(transaction_product_id) as transaction_product_id,
+        argMaxMerge(item_group_id) as item_group_id,
+        argMaxMerge(main_product_id) as main_product_id,
+        coalesce(item_group_id, main_product_id) as group_id
+    FROM product_id_mapping_latest
+    WHERE merchant = {{ String(merchant, "equestrian") }}
+    GROUP BY product_id
+
+NODE products_added_to_cart
+SQL >
+    %
+    SELECT market, device_id, product_id, timestamp, any (group_id) as group_id
+    FROM
+        (
+            SELECT *
+            FROM add_to_cart__v1
+            WHERE
+                merchant = {{ String(merchant, "equestrian") }}
+                AND Date(timestamp) >= {{ Date(from_date, "2023-08-28") }}
+                -- Inclusive
+                AND Date(timestamp) < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))
+        )
+    INNER JOIN latest_product_id_mapping USING product_id
+    GROUP BY market, device_id, product_id, timestamp
+
+NODE clicked_products
+SQL >
+    %
+    SELECT market, device_id, request_id, request_type, timestamp, any (group_id) as group_id
+    FROM
+        (
+            SELECT *
+            FROM click__v2
+            WHERE
+                merchant = {{ String(merchant, "equestrian") }}
+                AND Date(timestamp) >= {{ Date(from_date, "2023-08-28") }}
+                -- Inclusive
+                AND Date(timestamp) < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))
+        )
+    INNER JOIN latest_product_id_mapping USING product_id
+    GROUP BY market, device_id, request_type, request_id, timestamp
+
+NODE attributed_add_to_carts
+SQL >
+    SELECT
+        market,
+        device_id,
+        product_id,
+        argMax(products_added_to_cart.timestamp, clicked_products.timestamp) as timestamp,
+        argMax(request_type, clicked_products.timestamp) as request_type
+    FROM products_added_to_cart
+    LEFT JOIN
+        clicked_products
+        ON products_added_to_cart.group_id = clicked_products.group_id
+        AND products_added_to_cart.device_id = clicked_products.device_id
+        AND date(clicked_products.timestamp) = date(products_added_to_cart.timestamp)
+    GROUP BY market, device_id, product_id
+
+NODE add_to_cart_by_request
+SQL >
+    SELECT market, date(timestamp) as date, request_type, count(*) as add_to_carts
+    FROM attributed_add_to_carts
+    GROUP BY market, date, request_type
+    ORDER BY date DESC, market, request_type
