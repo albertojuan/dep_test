@@ -13,5 +13,5 @@ SQL >
         AND date >= {{ Date(from_date, "2023-08-01") }}
         AND date < dateAdd(DAY, 1, toDate({{ Date(to_date, "2023-09-15") }}))  -- Inclusive
     GROUP BY market, request_type, date
-    ORDER BY date ASC
+    ORDER BY date
     WITH FILL STEP toIntervalDay(1), market, request_type desc
