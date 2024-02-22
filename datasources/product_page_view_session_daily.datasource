@@ -1,0 +1,11 @@
+DESCRIPTION >
+    Number of unique sessions with product page views per day
+
+SCHEMA >
+    `viewed_date` Date,
+    `merchant` String,
+    `session_count` AggregateFunction(uniq, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(viewed_date)"
+ENGINE_SORTING_KEY "viewed_date, merchant"

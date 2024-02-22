@@ -1,0 +1,16 @@
+DESCRIPTION >
+    Search queries per merchant, market and day, with the number of searches and highest result count.
+
+SCHEMA >
+    `merchant` String,
+    `search_date` Date,
+    `locale` String,
+    `search_language` String,
+    `query` String,
+    `market` String,
+    `result_count` SimpleAggregateFunction(max, UInt64),
+    `search_count` AggregateFunction(count)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(search_date)"
+ENGINE_SORTING_KEY "merchant, locale, search_language, market, query"

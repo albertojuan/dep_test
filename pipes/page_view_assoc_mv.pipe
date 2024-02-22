@@ -1,0 +1,39 @@
+NODE unique_session_views
+DESCRIPTION >
+    One product page view per device and day
+
+SQL >
+
+    SELECT 
+      date(timestamp) as viewed_date,
+      PV.merchant AS merchant,
+      PV.device_id AS device_id,
+      PV.product_id AS product_id
+    FROM product_page_view AS PV
+    WHERE Length(PV.product_id) > 0
+    GROUP BY viewed_date, merchant, device_id, product_id
+
+
+
+NODE page_views_monthly
+DESCRIPTION >
+    Number of times two products were viewed in the same session per month.
+
+SQL >
+
+    SELECT
+      toStartOfMonth(v1.viewed_date) as viewed_month,
+      v1.merchant,
+      v1.product_id AS antecedent_product_id,
+      v2.product_id AS consequent_product_id,
+      countState() AS association_count
+    FROM unique_session_views AS v1 
+      INNER JOIN unique_session_views AS v2
+        ON v1.viewed_date = v2.viewed_date AND v1.merchant = v2.merchant AND v1.device_id = v2.device_id
+    GROUP BY viewed_month, v1.merchant, v1.product_id, v2.product_id
+    HAVING v1.product_id >= v2.product_id
+
+TYPE materialized
+DATASOURCE product_page_view_assoc_monthly
+
+

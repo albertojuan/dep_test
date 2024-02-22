@@ -1,0 +1,11 @@
+
+SCHEMA >
+    `merchant` String,
+    `market` String,
+    `request_type` String,
+    `date` Date,
+    `clicks` AggregateFunction(uniq, UUID, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(date)"
+ENGINE_SORTING_KEY "merchant, date, market, request_type"

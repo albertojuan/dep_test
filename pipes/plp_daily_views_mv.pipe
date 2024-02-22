@@ -1,0 +1,28 @@
+DESCRIPTION >
+	PLP views per merchant, market, collection and day.
+
+
+NODE plp_popularity__unique_daily_views_raw
+DESCRIPTION >
+    "unique daily views" means that if one user views a PLP several times, that counts as one view. We distinguish users based on their device id. Legacy rows without collection IDs cannot be used and are hence filtered away.
+
+SQL >
+
+    SELECT
+        merchant,
+        market,
+        coalesce(collection_id, '') AS collection_id,
+        toDate(timestamp) AS date,
+        uniqState(device_id) AS unique_views
+    FROM product_listing
+    WHERE collection_id IS NOT NULL
+    GROUP BY
+        merchant,
+        market,
+        collection_id,
+        date
+
+TYPE materialized
+DATASOURCE merchant_plp_daily_views
+
+

@@ -1,0 +1,11 @@
+
+SCHEMA >
+    `viewed_month` Date,
+    `merchant` String,
+    `antecedent_product_id` String,
+    `consequent_product_id` String,
+    `association_count` AggregateFunction(count)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(viewed_month)"
+ENGINE_SORTING_KEY "merchant, antecedent_product_id, consequent_product_id"

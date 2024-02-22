@@ -1,0 +1,59 @@
+DESCRIPTION >
+	Aggregates search queries per day, with the number of searches and the maximum number of search results that day
+
+
+NODE unique_searches
+DESCRIPTION >
+    Several search requests are sent as the user is typing. Here we try to find which query they were ultimately searching for, with the number of results for that query.
+
+SQL >
+
+    SELECT
+        merchant,
+        locale,
+        search_language,
+        device_id,
+        market,
+        tumbleStart(toDateTime(timestamp), toIntervalSecond(15)) AS timeslot,
+        argMax(cleaned_query, length(cleaned_query)) AS query,
+        argMax(length(product_ids) + length(content_urls), length(cleaned_query)) AS result_count
+    FROM search
+      WHERE cleaned_query <> ''
+    GROUP BY
+        merchant,
+        locale,
+        search_language,
+        device_id,
+        market,
+        timeslot
+
+
+
+NODE searches_per_day
+DESCRIPTION >
+    Combine the searches per day and "market", with the max result count per day. Max result count is used because the user may have applied restrictive filters that reduce the results for a query that in reality has tons of potential results.
+
+SQL >
+
+    SELECT
+        merchant,
+        Date(timeslot) AS search_date,
+        locale,
+        search_language,
+        query,
+        market,
+        maxSimpleState(result_count) AS result_count,
+        countState() AS search_count
+    FROM unique_searches
+    GROUP BY
+        merchant,
+        search_date,
+        locale,
+        search_language,
+        query,
+        market
+
+TYPE materialized
+DATASOURCE search_queries_per_day
+
+

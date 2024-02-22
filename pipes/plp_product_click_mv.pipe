@@ -1,0 +1,29 @@
+VERSION 2
+DESCRIPTION >
+	Provides two counts for each PLP:
+- unique device clicks: how many unique devices clicked on any product on the PLP per day? This counts the number of devices, so if one device clicks on multiple products in a day, that still counts as only a single device.
+- unique clicks: how many deduplicated clicks have there been on a single PLP? "Deduplicated" means that if a user clicks multiple times on the same product on the same PLP on the same day, that counts as a single deduplicated click (even if there are several hours between the clicks).
+
+
+NODE plp_product_click_counts_per_plp
+SQL >
+
+    SELECT
+        C.merchant,
+        C.market,
+        C.request_query AS collection_id,
+        toDate(C.timestamp) AS day,
+        uniqState(C.device_id) AS unique_devices,
+        uniqState(C.device_id, C.product_id) AS unique_clicks
+    FROM click AS C
+    WHERE (C.request_type = 'product_listing') AND (Length(C.request_query) > 0)
+    GROUP BY
+        merchant,
+        market,
+        collection_id,
+        day
+
+TYPE materialized
+DATASOURCE plp_product_click_counts_daily
+
+

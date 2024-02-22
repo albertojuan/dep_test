@@ -1,0 +1,28 @@
+DESCRIPTION >
+	Measures clicks on Depict surfaces
+
+
+NODE daily_clicks
+SQL >
+
+    SELECT
+        merchant,
+        market,
+        request_type,
+        toDate(timestamp) AS date,
+        uniqState(request_id, product_id) AS clicks
+    FROM click
+    GROUP BY
+        merchant,
+        market,
+        request_type,
+        date
+    ORDER BY
+        date ASC,
+        market ASC,
+        request_type ASC
+
+TYPE materialized
+DATASOURCE merchant_daily_surface_clicks
+
+

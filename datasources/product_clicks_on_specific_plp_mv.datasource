@@ -1,0 +1,12 @@
+
+SCHEMA >
+    `merchant` String,
+    `market` String,
+    `collection_id` String,
+    `day` Date,
+    `product_id` String,
+    `unique_clicks` AggregateFunction(uniq, String)
+
+ENGINE "AggregatingMergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(day)"
+ENGINE_SORTING_KEY "merchant, market, day, collection_id, product_id"

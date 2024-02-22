@@ -1,0 +1,23 @@
+NODE product_clicks_on_specific_plp_0
+SQL >
+
+    SELECT
+        C.merchant,
+        C.market,
+        C.request_query AS collection_id,
+        toDate(C.timestamp) AS day,
+        product_id,
+        uniqState(C.device_id) AS unique_clicks
+    FROM click AS C
+    WHERE (C.request_type = 'product_listing') AND (Length(C.request_query) > 0)
+    GROUP BY
+        merchant,
+        market,
+        collection_id,
+        product_id,
+        day
+
+TYPE materialized
+DATASOURCE product_clicks_on_specific_plp_mv
+
+

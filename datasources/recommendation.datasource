@@ -1,0 +1,18 @@
+VERSION 2
+TOKEN "data append token" APPEND
+
+
+SCHEMA >
+    `request_id` UUID `json:$.request_id`,
+    `timestamp` DateTime64(3) `json:$.timestamp`,
+    `merchant` String `json:$.merchant`,
+    `market` String `json:$.market`,
+    `locale` String `json:$.locale`,
+    `device_id` String `json:$.device_id`,
+    `recommendation_type` String `json:$.recommendation_type`,
+    `request_main_product_ids` Array(String) `json:$.request_main_product_ids[:]`,
+    `response_product_ids` Array(String) `json:$.response_product_ids[:]`
+
+ENGINE "MergeTree"
+ENGINE_PARTITION_KEY "toYYYYMM(timestamp)"
+ENGINE_SORTING_KEY "merchant, market, request_id"
